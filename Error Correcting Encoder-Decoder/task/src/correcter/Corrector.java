@@ -1,135 +1,84 @@
 package correcter;
 
 import java.io.*;
-import java.util.Arrays;
 
 public class Corrector {
-    protected String recoverMessage(String message) {
-        StringBuilder recoveredMessage = new StringBuilder();
-        for (int i = 0; i < message.length() - 2; i += 3) {
-            int j = 0;
-            while (true) {
-                int indexChar1 = i + j % 3;
-                int indexChar2 = i + (j + 1) % 3;
-                char char1 = message.charAt(indexChar1);
-                char char2 = message.charAt(indexChar2);
-                if (char1 == char2) {
-                    recoveredMessage.append(char1);
-                    break;
-                }
-                if (j > 3) {
-                    recoveredMessage.append("*"); // Letter not recovered
-                    break;
-                }
-                j++;
-            }
-        }
-        return  recoveredMessage.toString();
-    }
 
-    protected String repeatLettersOfMessageTimes(String message, int times) {
-        StringBuilder tripledMessage = new StringBuilder();
-        for (char letter : message.toCharArray()) {
-            tripledMessage.append(String.valueOf(letter).repeat(times));
-        }
-        return tripledMessage.toString();
-    }
+    private final static int[] P1_CURSORS = {32, 8, 2};
+    private final static int[] P2_CURSORS = {32, 4, 2};
+    private final static int[] P4_CURSORS = {8, 4, 2};
+    private final static int[][] CURSORS = {P1_CURSORS, P2_CURSORS, P4_CURSORS};
+    private final static int[] PARITY_BIT_POSITIONS = {128, 64, 16};
 
-    protected byte[] createBytesWithParityBit(String lineOfBits) throws IOException {
-        StringBuilder buffer = new StringBuilder(lineOfBits);
+    protected byte[] convertToHammingBytes(byte[] bytes) throws IOException {
         try (ByteArrayOutputStream byteOutputStream = new ByteArrayOutputStream()) {
-            int chunk = 3;
-            int length = buffer.length();
-            if (length % chunk != 0) { // Correction if not divisible by 3
-                int additionalZeroes = chunk - length % chunk;
-                buffer.append("0".repeat(additionalZeroes));
-            }
-
-            lineOfBits = buffer.toString();
-            for (int i = 0; i < lineOfBits.length(); i += chunk) {
-                String bits = lineOfBits.substring(i, i + chunk);
-                String bitsWithParity = addParityBit(bits);
-                String doubledBits = repeatLettersOfMessageTimes(bitsWithParity, 2);
-                byteOutputStream.write(Integer.parseInt(doubledBits, 2));
+            for (byte b : bytes) {
+                byte rightHalfByte = (byte) (b & 0xF);
+                byte leftHalfByte = (byte) (b >>> 4);
+                byteOutputStream.write(addParityBits(leftHalfByte));
+                byteOutputStream.write(addParityBits(rightHalfByte));
             }
             return byteOutputStream.toByteArray();
         }
     }
 
-    private String addParityBit(String stringOfBits) {
-        String[] bits = stringOfBits.split("");
-        int length = bits.length;
-        int[] separatedBits = new int[length + 1];
-        for (int i = 0; i < length; i++) {
-            separatedBits[i] = Integer.parseInt(bits[i]);
-        }
-        int parityBit = separatedBits[0] ^ separatedBits[1] ^ separatedBits[2];
-        separatedBits[length] = parityBit;
-        return Arrays.toString(separatedBits).replaceAll("[\\[\\] ,]", "");
-    }
-
-    protected String recoverOriginalBits(String lineOfBits) {
-        StringBuilder buffer = new StringBuilder();
-        int byteSize = 8;
-        int chunk = 2;
-
-        for (int i = 0; i < lineOfBits.length(); i += byteSize) {
-            String bitsOfByte = lineOfBits.substring(i, i + byteSize);
-            String[] pairs = bitsOfByte.split("(?<=\\G.{"+ chunk +"})"); // ["00", "11", "01", "11"]
-            String tripleOfBits = recoverTripleOfBits(pairs);
-            buffer.append(tripleOfBits);
-        }
-
-        int bufferSize = buffer.length();
-        if (bufferSize % byteSize != 0) { // correction for too long sequence
-           int correctLength = bufferSize - bufferSize % byteSize;
-           buffer.setLength(correctLength);
-        }
-        return buffer.toString();
-    }
-
-    private String recoverTripleOfBits(String[] pairs) {
-        int[] ints = markDamagedPair(pairs); // parityBit is the last one
-        int indexOfParity = ints.length - 1;
-        StringBuilder buffer = new StringBuilder();
-        // if Parity bit is damaged
-        int parityBit = ints[indexOfParity];
-        if (parityBit == -1) {
-            for (int i = 0; i < indexOfParity; i++) {
-                buffer.append(ints[i]);
-            }
-            return buffer.toString();
-        }
-        int damagedBitIndex = 0;
-        int recoveredBit = parityBit;
-        for (int j = 0; j < indexOfParity; j++) {
-            if (ints[j] == -1) {
-                damagedBitIndex = j;
-                continue;
-            }
-            recoveredBit ^= ints[j];
-        }
-        ints[damagedBitIndex] = recoveredBit;
-        for (int k = 0; k < indexOfParity; k++) {
-            buffer.append(ints[k]);
-        }
-        return buffer.toString();
-    }
-
-    /**
-     * Create array of single ints
-     * @param pairs array of paired bits ["00", "11", "01", "11"]
-     * @return array of ints, damaged pair replaced with -1 [0, 1, -1, 1]
-     */
-    private int[] markDamagedPair(String[] pairs) {
-        int[] ints = new int[pairs.length];
-        for (int j = 0; j < pairs.length; j++) {
-            if (pairs[j].charAt(0) == pairs[j].charAt(1)) {
-                ints[j] = Integer.parseInt("" + pairs[j].charAt(0));
-            } else {
-                ints[j] = -1;
+    private int addParityBits(byte halfByte) {
+        // 0b00001111 -> 0bXX1X1110 -> 0b11111110;
+        byte hammingByte = (byte) (halfByte << 1);
+        byte fifthBitLSH = (byte) ((hammingByte & (1 << 4)) << 1);
+        hammingByte = (byte) (hammingByte & 0xF | fifthBitLSH);
+        for (int i = 0; i < CURSORS.length; i++) {
+            if (calculateParityValue(hammingByte, CURSORS[i]) == 1) {
+                hammingByte |= PARITY_BIT_POSITIONS[i];
             }
         }
-        return ints;
+        return hammingByte;
+    }
+
+    private int calculateParityValue(byte hammingByte, int[] cursorsPositions) {
+        int counter = 0;
+        for (int position : cursorsPositions) {
+            if ((hammingByte & position) != 0) {
+                counter++;
+            }
+        }
+        return counter % 2;
+    }
+
+    private static byte recombineByte(byte hammingByte) {
+        int separatedThirdBit = (hammingByte & 32) >>> 2; // 01101010 & 100000 -> 100000 -> 1000
+        return (byte) (hammingByte >>> 1 & 7 ^ separatedThirdBit); // 01101010 -> 00110101 -> 00000101 -> 00001101
+    }
+
+    protected byte[] recoverBytes(byte[] bytes) throws IOException {
+        try (ByteArrayOutputStream byteOutputStream = new ByteArrayOutputStream()) {
+            for (int i = 0; i < bytes.length - 1; i += 2) {
+                byte leftByte = recombineByte(recoverByte(bytes[i]));
+                byte rightByte = recombineByte(recoverByte(bytes[i + 1]));
+                leftByte = (byte) (leftByte << 4);
+                byteOutputStream.write(leftByte | rightByte);
+            }
+            return byteOutputStream.toByteArray();
+        }
+    }
+
+    private byte recoverByte(byte hammingByte) {
+        int[] parityValues = {1, 2, 4};
+        int damagedBytePosition = 0;
+        for (int i = 0; i < CURSORS.length; i++) {
+            int parity = getParityValue(hammingByte, PARITY_BIT_POSITIONS[i]);
+            if (calculateParityValue(hammingByte, CURSORS[i]) != parity) {
+                damagedBytePosition += parityValues[i];
+            }
+        }
+        if (damagedBytePosition != 0) {
+            int cursor = 128 >>> --damagedBytePosition;
+            hammingByte = (byte) (hammingByte ^ cursor);
+        }
+        return hammingByte;
+    }
+
+    private int getParityValue(byte hammingByte, int parityPosition) {
+        return (hammingByte & parityPosition) != 0 ? 1 : 0;
     }
 }

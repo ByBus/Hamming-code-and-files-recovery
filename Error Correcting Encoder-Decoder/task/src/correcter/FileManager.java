@@ -20,26 +20,4 @@ public class FileManager {
         outputStream.write(data);
         outputStream.close();
     }
-
-    public static String convertBytesToString(byte[] data) {
-        StringBuilder stringBuilder = new StringBuilder();
-        for (byte b : data) {
-            stringBuilder.append(String
-                    .format("%8s", Integer.toBinaryString(b & 0xFF))
-                    .replace(' ', '0'));
-        }
-        return stringBuilder.toString();
-    }
-
-    public static byte[] convertStringToBytes(String lineOfBits) throws IOException {
-        int byteSize = 8;
-        try (ByteArrayOutputStream byteOutputStream = new ByteArrayOutputStream()) {
-            for (int i = 0; i < lineOfBits.length(); i += byteSize) {
-                String bitsOfByte = lineOfBits.substring(i, i + byteSize);
-                int byte_ = Integer.parseInt(bitsOfByte, 2);
-                byteOutputStream.write(byte_);
-            }
-            return byteOutputStream.toByteArray();
-        }
-    }
 }

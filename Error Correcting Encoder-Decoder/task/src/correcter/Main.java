@@ -29,22 +29,19 @@ public class Main {
 
     private static void recoverFile(Corrector corrector) throws IOException {
         byte[] bytesOfDamagedFile = FileManager.readBytesFromFile(FileManager.RECEIVED_FILE);
-        String lineOfDamagedBits = FileManager.convertBytesToString(bytesOfDamagedFile);
-        String lineOfRecoveredBits = corrector.recoverOriginalBits(lineOfDamagedBits);
-        byte[] recoveredBytes = FileManager.convertStringToBytes(lineOfRecoveredBits);
+        byte[] recoveredBytes = corrector.recoverBytes(bytesOfDamagedFile);
         FileManager.saveBytesToFile(recoveredBytes, FileManager.DECODED_FILE);
     }
 
     private static void addDamageAndSend(Corrupter corrupter) throws IOException {
         byte[] bytesOfEncodedFile = FileManager.readBytesFromFile(FileManager.ENCODED_FILE);
-        byte[] damagedBytes = corrupter.corruptEveryBiteOfData(bytesOfEncodedFile);
+        byte[] damagedBytes = corrupter.corruptEveryByteOfData(bytesOfEncodedFile);
         FileManager.saveBytesToFile(damagedBytes, FileManager.RECEIVED_FILE);
     }
 
     private static void prepareFile(Corrector corrector) throws IOException {
         byte[] bytesFromText = FileManager.readBytesFromFile(FileManager.SEND_FILE);
-        String lineOfBits = FileManager.convertBytesToString(bytesFromText);
-        byte[] parityBytes = corrector.createBytesWithParityBit(lineOfBits);
+        byte[] parityBytes = corrector.convertToHammingBytes(bytesFromText);
         FileManager.saveBytesToFile(parityBytes, FileManager.ENCODED_FILE);
     }
 }
